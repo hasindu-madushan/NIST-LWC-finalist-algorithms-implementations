@@ -175,9 +175,9 @@ int main()
     /*
     test vector count = 580
     */
-    char message_hex[] = "000102030405060708090A0B0C0D0E0F10";
+    char message_hex[] = "000102030405060708090A0B0C";
     char key_hex[] =     "000102030405060708090A0B0C0D0E0F";
-    char ad_hex[] =      "000102030405060708090A0B0C0D0E0F1011";
+    char ad_hex[] =      "000102030405060708090A0B0C0D0E0F1011121314";
     char nonce_hex[] =   "000102030405060708090A0B0C0D0E0F";
 
     uint8_t *cipher_text;
