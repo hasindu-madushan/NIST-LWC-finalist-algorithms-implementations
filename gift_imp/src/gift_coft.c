@@ -16,6 +16,9 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plaint_text_len, uint8_t *key, ui
 
 void triple_half_block(uint8_t* d, uint8_t* s);
 void double_half_block(uint8_t* d, uint8_t* s);
+void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint64_t adlen, uint32_t a, uint8_t *key, uint64_t *L);
+void process_ad_block(uint64_t *y, uint64_t *x, uint64_t *associated_data, uint8_t *key, uint32_t j, uint64_t *L);
+void pad(uint8_t *result, uint8_t *block, uint32_t len);
 
 uint64_t rotate_left_64(uint8_t *x)
 {
@@ -29,16 +32,19 @@ uint64_t rotate_left_64(uint8_t *x)
 uint8_t *encrypt(uint8_t *plain_text, uint64_t plaint_text_len, uint8_t *key, uint8_t *associated_data, uint64_t adlen, uint8_t *nonce)
 {
     uint32_t a, m, i, j, k;
-    uint64_t *y, *x;
+    uint64_t *y, *x, last_block[2];
     uint64_t L;
     uint8_t *cipher_text;
-    a = adlen >> 4;
+    a = (adlen >> 4) + ((adlen & 15) ? 1 : 0);
     m = plaint_text_len >> 4;
 
     printf("a: %d, m: %d\nplain text len: %llu, adlen: %llu\n", a, m, plaint_text_len, adlen);
     /* TODO: pad plain_text, associated_data. */
     y = (uint64_t*)malloc(plaint_text_len + adlen + 16);
     x = (uint64_t*)malloc(plaint_text_len + adlen);
+    
+    printf("x: %p\n", x);
+
     cipher_text = (uint8_t*)malloc(plaint_text_len);
     printf("init\n"); 
 
@@ -47,28 +53,8 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plaint_text_len, uint8_t *key, ui
     L = ((uint64_t*)y)[0];
     printf("L: %s\n", bytes_to_hex((uint8_t*)&L, 8));
 
-    for (i = 0; i < a - 1; i++)
-    {
-        printf("i %d\n", i);
-        double_half_block((uint8_t*)&L, (uint8_t*)&L); /* L <- 2.L */
-        j = i << 1;
-        k = j + 1;
-        printf("i %d\n", i);
-        x[j] = ((uint64_t*)associated_data)[j] ^ y[k] ^ L;
-        x[k] = ((uint64_t*)associated_data)[k] ^ rotate_left_64((uint8_t*)&y[j]);
-        gift128_encrypt((uint8_t*)&x[j], key, (uint8_t*)(y + j + 2));
-    }
-
-    /* TODO: if |A| mod n = 0 and |A| != 0 then L = 3.L */
-    // printf("3.L: %s\n", bytes_to_hex((uint8_t*)&L3, 8));
-    triple_half_block((uint8_t*)&L, (uint8_t*)&L);
-
-    j = (a - 1) << 1; /* index to the last 128 block of ad */
-    k = j + 1;
-    
-    x[j] = ((uint64_t*)associated_data)[j] ^ y[k] ^ L;
-    x[k] = ((uint64_t*)associated_data)[k] ^ rotate_left_64((uint8_t*)&y[j]);
-    gift128_encrypt((uint8_t*)&x[j], key, (uint8_t*)(y + j + 2));
+    printf("x: %p\n", x);
+    process_associated_data(y, x, associated_data, adlen, a, key, &L);
 
     printf("Ek(x[i]): %s\n", bytes_to_hex((uint8_t*)(y + 2), 16));
     printf("X: %s\n", bytes_to_hex((uint8_t*)(x + 1), 8));
@@ -103,18 +89,42 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plaint_text_len, uint8_t *key, ui
     return cipher_text;
 }
 
-void process_ad_block(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint8_t *key, uint32_t j, uint64_t *L)
+void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint64_t adlen, uint32_t a, uint8_t *key, uint64_t *L)
+{
+    printf("process_associated_data\n");
+    uint32_t i;
+    uint64_t last_block[2];
+    for (i = 0; i < a - 1; i++)
+    {
+	printf("i: %d\n", i);
+        double_half_block((uint8_t*)L, (uint8_t*)L); /* L <- 2.L */
+	process_ad_block(y, x, (uint64_t*)associated_data , key, i << 1, L);
+	printf("--- i: %d\n", i);
+    }
+
+    triple_half_block((uint8_t*)L, (uint8_t*)L);
+    if (adlen & 15) 
+	triple_half_block((uint8_t*)L, (uint8_t*)L);
+
+    pad((uint8_t*)last_block, associated_data, adlen);
+    printf("pad: %s\n", bytes_to_hex((uint8_t*)last_block, 16));
+    process_ad_block(y, x, last_block, key, (a - 1) << 1, L);
+    printf("ad block process done\n");
+}
+
+void process_ad_block(uint64_t *y, uint64_t *x, uint64_t *associated_data, uint8_t *key, uint32_t j, uint64_t *L)
 {
     uint32_t k;
     k = j + 1;
-    x[j] = ((uint64_t*)associated_data)[j] ^ y[k] ^ *L;
-    x[k] = ((uint64_t*)associated_data)[k] ^ rotate_left_64((uint8_t*)&y[j]);
+    x[j] = *associated_data ^ y[k] ^ *L;
+    printf("x 0 done\n");
+    x[k] = *(associated_data + 1) ^ rotate_left_64((uint8_t*)(y + j));
     gift128_encrypt((uint8_t*)&x[j], key, (uint8_t*)(y + j + 2));
 }
 
-static void double_half_block(uint8_t* d, uint8_t* s) {
+void double_half_block(uint8_t* d, uint8_t* s) {
     uint8_t i;
-    uint8_t* tmp;
+    uint8_t tmp[8];
     /*x^{64} + x^4 + x^3 + x + 1*/
     for (i=0; i<7; i++)
         tmp[i] = (s[i] << 1) | (s[i+1] >> 7);
@@ -126,12 +136,30 @@ static void double_half_block(uint8_t* d, uint8_t* s) {
 
 void triple_half_block(uint8_t* d, uint8_t* s) {
     uint8_t i;
-    uint8_t* tmp;
+    uint8_t tmp[8];
     double_half_block(tmp,s);
     for (i=0; i<8; i++)
         d[i] = s[i] ^ tmp[i];
 }
 
+void pad(uint8_t *result, uint8_t *block, uint32_t len)
+{
+    uint8_t dif;
+    dif =  len & 15;
+    printf("dif: %d\n", dif);
+    block = block + len - dif;
+    if (dif)
+    {
+	printf("pad : %s\n", bytes_to_hex(block, 1));
+	memcpy(result, block, dif);
+	result[dif] = 0x80;
+	if (dif < 15)
+	    memset(result + dif + 1, 0, 16 - dif - 1);
+    }
+    else
+	memcpy(result, block, 16);
+}
+	
 int main() 
 {
     /*
@@ -145,7 +173,7 @@ int main()
     char *message_hex = "000102030405060708090A0B0C0D0E0F";
     char *key_hex =     "000102030405060708090A0B0C0D0E0F";
     //char *key_hex =     "00000000000000000000000000000000";
-    char *ad_hex =      "000102030405060708090A0B0C0D0E0F";
+    char ad_hex[] =      "000102030405060708090A0B0C0D0E0F101112";
     char *nonce_hex =   "000102030405060708090A0B0C0D0E0F";
     //char *nonce_hex =   "00000000000000000000000000000000";
 
@@ -153,11 +181,13 @@ int main()
     uint8_t *message = hex_to_bytes(message_hex, 32);
     uint8_t *key = hex_to_bytes(key_hex, 32);
     uint8_t *nonce = hex_to_bytes(nonce_hex, 32);
-    uint8_t *ad = hex_to_bytes(ad_hex, 32);
+    uint8_t *ad = hex_to_bytes(ad_hex, sizeof(ad_hex));
+    uint32_t adlen = sizeof(ad_hex) / 2;
 
     cipher_text = (uint8_t*)malloc(16);
     //gift128_encrypt(nonce, key, cipher_text);
-    cipher_text = encrypt(message, 16, key, ad, 16, nonce);
+    printf("adlen: %d\n", adlen);
+    cipher_text = encrypt(message, 16, key, ad, adlen, nonce);
     printf("encryption complete\n");
     printf("%s\n", bytes_to_hex(cipher_text, 16));
     free(cipher_text);
