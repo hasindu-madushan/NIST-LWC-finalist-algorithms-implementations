@@ -37,6 +37,7 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plain_text_len, uint8_t *key, uin
     uint64_t *y, *x, last_block[2];
     uint64_t L;
     uint8_t *cipher_text;
+    uint8_t tag[16];
     a = (adlen >> 4) + ((adlen & 15) ? 1 : 0);
     m = plain_text_len >> 4;
     
@@ -71,10 +72,11 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plain_text_len, uint8_t *key, uin
     // }
 
     process_plain_text(cipher_text, y, x, plain_text, plain_text_len, key, &L, a, m);
-
+    memcpy(tag, y + 2 * (a + m), 16);
     free(y);
     free(x);
     printf("cipher text: %s\n", bytes_to_hex(cipher_text, 16));
+    printf("tag: %s\n", bytes_to_hex(tag, 16));
     return cipher_text;
 }
 
@@ -123,9 +125,9 @@ void process_plain_text_block(uint8_t *cipher_text, uint64_t *y, uint64_t *x, ui
     *((uint64_t*)cipher_text + j) = *plain_text_block ^ y[j + 2 * a]; 
     *((uint64_t*)cipher_text + k) = *(plain_text_block + 1) ^ y[k + 2 * a]; 
     
-    x[j + a] = *plain_text_block ^ y[k + a + 2] ^ *L;
-    x[k + a] =  *(plain_text_block + 1) ^ rotate_left_64((uint8_t*)(y + j + a + 2)); 
-    gift128_encrypt((uint8_t*)(x + j + a), key, (uint8_t*)(y + j + a + 2));
+    x[j + a] = *plain_text_block ^ y[k + a * 2] ^ *L;
+    x[k + a] =  *(plain_text_block + 1) ^ rotate_left_64((uint8_t*)(y + j + a * 2)); 
+    gift128_encrypt((uint8_t*)(x + j + a), key, (uint8_t*)(y + j + a * 2 + 2));
 }
 
 void double_half_block(uint8_t* d, uint8_t* s) {
