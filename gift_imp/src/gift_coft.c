@@ -16,7 +16,7 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plain_text_len, uint8_t *key, uin
 
 void triple_half_block(uint8_t* d, uint8_t* s);
 void double_half_block(uint8_t* d, uint8_t* s);
-void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint64_t adlen, uint32_t a, uint8_t *key, uint64_t *L);
+void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint64_t adlen, uint32_t a, uint8_t *key, uint64_t *L, uint32_t m);
 void process_ad_block(uint64_t *y, uint64_t *x, uint64_t *associated_data, uint8_t *key, uint32_t j, uint64_t *L);
 void process_plain_text(uint8_t *cipher_text, uint64_t *y, uint64_t *x, uint8_t *plain_text, uint64_t plain_text_len, uint8_t *key, uint64_t *L, uint32_t a, uint32_t m);
 void process_plain_text_block(uint8_t *cipher_text, uint64_t *y, uint64_t *x, uint64_t *plain_text_block, uint8_t *key, uint32_t j, uint64_t *L, uint32_t a);
@@ -56,9 +56,11 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plain_text_len, uint8_t *key, uin
     gift128_encrypt(nonce, key, (uint8_t*)y);
     L = ((uint64_t*)y)[0];
 
-    process_associated_data(y, x, associated_data, adlen, a, key, &L);
+    process_associated_data(y, x, associated_data, adlen, a, key, &L, m);
 
+    printf("y: %s\n", bytes_to_hex((uint8_t*)y, 32));
     process_plain_text(cipher_text, y, x, plain_text, plain_text_len, key, &L, a, m);
+    printf("tag last y: %d\n", 2 * (a + m));
     memcpy(tag, y + 2 * (a + m), 16);
     free(y);
     free(x);
@@ -67,7 +69,7 @@ uint8_t *encrypt(uint8_t *plain_text, uint64_t plain_text_len, uint8_t *key, uin
     return cipher_text;
 }
 
-void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint64_t adlen, uint32_t a, uint8_t *key, uint64_t *L)
+void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data, uint64_t adlen, uint32_t a, uint8_t *key, uint64_t *L, uint32_t m)
 {
     printf("process_associated_data\n");
     uint32_t i;
@@ -84,7 +86,14 @@ void process_associated_data(uint64_t *y, uint64_t *x, uint8_t *associated_data,
     if ((adlen & 15) || adlen == 0) 
 	triple_half_block((uint8_t*)L, (uint8_t*)L);
 
+    if (m == 0)
+    {
+	triple_half_block((uint8_t*)L, (uint8_t*)L);
+	triple_half_block((uint8_t*)L, (uint8_t*)L);
+    }
+
     pad((uint8_t*)last_block, associated_data, adlen);
+    printf("pad (AD): %s\n", bytes_to_hex((uint8_t*)last_block, 16));
     process_ad_block(y, x, last_block, key, (a - 1) << 1, L);
     printf("process_associated_data done\n");
 }
@@ -154,7 +163,7 @@ uint8_t *decrypt(uint8_t *cipher_text, uint64_t cipher_text_len, uint8_t *key, u
     gift128_encrypt(nonce, key, (uint8_t*)y);
     L = ((uint64_t*)y)[0];
 
-    process_associated_data(y, x, associated_data, adlen, a, key, &L);
+    process_associated_data(y, x, associated_data, adlen, a, key, &L, m);
 
     process_cipher_text(plain_text, y, x, cipher_text, cipher_text_len, key, &L, a, m);
     memcpy(tag, y + 2 * (a + m), 16);
@@ -245,7 +254,7 @@ void pad(uint8_t *result, uint8_t *block, uint32_t len)
     uint8_t dif;
     dif =  len & 15;
     printf("dif: %d, len: %d\n", dif, len);
-    if (dif)
+    if (dif > 0 || len == 0)
     {
 	memcpy(result, block + len - dif, dif);
 	result[dif] = 0x80;
@@ -259,11 +268,11 @@ void pad(uint8_t *result, uint8_t *block, uint32_t len)
 int main() 
 {
     /*
-    test vector count = 573
+    test vector count = 2
     */
-    char message_hex[] = "000102030405060708090A0B0C0D0E0F10";
+    char message_hex[] = "";
     char key_hex[] =     "000102030405060708090A0B0C0D0E0F";
-    char ad_hex[] =      "000102030405060708090A";
+    char ad_hex[] =      "";
     char nonce_hex[] =   "000102030405060708090A0B0C0D0E0F";
 
     uint8_t *cipher_text;
