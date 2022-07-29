@@ -109,7 +109,9 @@ void process_plain_text(uint8_t *cipher_text, uint64_t *y, uint64_t *x, uint8_t 
     if (plain_text_len & 15)
 	triple_half_block((uint8_t*)L, (uint8_t*)L);
 
+    printf("PT before pad: %s\n", bytes_to_hex(plain_text, plain_text_len));
     pad((uint8_t*)last_block, plain_text, plain_text_len);
+    printf("pad (PT): %s\n", bytes_to_hex((uint8_t*)last_block, 16));
     process_plain_text_block(cipher_text, y, x, last_block, key, (m - 1) << 1, L, a);
     printf("process_plain_text done\n");
 }
@@ -156,18 +158,16 @@ void pad(uint8_t *result, uint8_t *block, uint32_t len)
 {
     uint8_t dif;
     dif =  len & 15;
-    printf("dif: %d\n", dif);
-    block = block + len - dif;
+    printf("dif: %d, len: %d\n", dif, len);
     if (dif)
     {
-	printf("pad : %s\n", bytes_to_hex(block, 1));
-	memcpy(result, block, dif);
+	memcpy(result, block + len - dif, dif);
 	result[dif] = 0x80;
 	if (dif < 15)
 	    memset(result + dif + 1, 0, 16 - dif - 1);
     }
     else
-	memcpy(result, block, 16);
+	memcpy(result, block + len - 16, 16);
 }
 	
 int main() 
@@ -175,7 +175,7 @@ int main()
     /*
     test vector count = 580
     */
-    char message_hex[] = "000102030405060708090A0B0C";
+    char message_hex[] = "000102030405060708090A0B0C0D0E0F";
     char key_hex[] =     "000102030405060708090A0B0C0D0E0F";
     char ad_hex[] =      "000102030405060708090A0B0C0D0E0F1011121314";
     char nonce_hex[] =   "000102030405060708090A0B0C0D0E0F";
