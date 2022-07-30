@@ -268,9 +268,9 @@ void pad(uint8_t *result, uint8_t *block, uint32_t len)
 int main() 
 {
     /*
-    test vector count = 2
+    test vector count = 34
     */
-    char message_hex[] = "";
+    char message_hex[] = "00";
     char key_hex[] =     "000102030405060708090A0B0C0D0E0F";
     char ad_hex[] =      "";
     char nonce_hex[] =   "000102030405060708090A0B0C0D0E0F";
