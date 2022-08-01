@@ -4,7 +4,7 @@
 #define SPONGENT_H
 
 
-void permutation(uint8_t *state);
+void permute(uint8_t *state);
 
 
 #endif

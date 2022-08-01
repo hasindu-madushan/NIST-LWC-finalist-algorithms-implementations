@@ -1,9 +1,12 @@
 #include "spongent.h"
 #include <string.h>
+#include <stdio.h>
+#include "../../utils/hex_utils.h"
 
 #define STATE_SIZE 20
+#define N_ROUNDS 80 
 
-uint8_t s_box[256] = {
+const uint8_t s_box[256] = {
 	0xee, 0xed, 0xeb, 0xe0, 0xe2, 0xe1, 0xe4, 0xef, 0xe7, 0xea, 0xe8, 0xe5, 0xe9, 0xec, 0xe3, 0xe6, 
 	0xde, 0xdd, 0xdb, 0xd0, 0xd2, 0xd1, 0xd4, 0xdf, 0xd7, 0xda, 0xd8, 0xd5, 0xd9, 0xdc, 0xd3, 0xd6, 
 	0xbe, 0xbd, 0xbb, 0xb0, 0xb2, 0xb1, 0xb4, 0xbf, 0xb7, 0xba, 0xb8, 0xb5, 0xb9, 0xbc, 0xb3, 0xb6, 
@@ -22,10 +25,45 @@ uint8_t s_box[256] = {
 	0x6e, 0x6d, 0x6b, 0x60, 0x62, 0x61, 0x64, 0x6f, 0x67, 0x6a, 0x68, 0x65, 0x69, 0x6c, 0x63, 0x66 
 };
 
+uint8_t i_counter(uint8_t i_counter_lfsr);
+uint8_t rev(uint8_t i);
+void s_box_layer(uint8_t *state);
+void p_layer(uint8_t *state);
+uint8_t find_permute_bit_position(uint8_t byte_index, uint8_t bit_index);
+
+void permute(uint8_t *state)
+{
+    uint8_t lfsr, i;
+    lfsr = 0b01110101;
+
+    for (i = 0; i < N_ROUNDS; i++)
+    {
+	printf("%d: %s\n", i, bytes_to_hex(state, 20));
+	state[STATE_SIZE - 1] ^= rev(lfsr);
+	state[0] ^= lfsr;
+	printf("%d: before sbox %s\n", i, bytes_to_hex(state, 20));
+	lfsr = i_counter(lfsr);
+	s_box_layer(state);
+	//printf("%d: after sbox    %s\n", i, bytes_to_hex(state, 20));
+	p_layer(state);
+	//printf("%d: after P layer %s\n", i, bytes_to_hex(state, 20));
+	//printf("lfsr: %02X\n", lfsr);
+	printf("%d: %s\n", i, bytes_to_hex(state, 20));
+    }
+}
+
 uint8_t i_counter(uint8_t i_counter_lfsr)
 {
     i_counter_lfsr = (i_counter_lfsr << 1) | (((i_counter_lfsr >> 6) ^ (i_counter_lfsr >> 5)) & 1);
-    return i_counter_lfsr & 0x7f;
+    return i_counter_lfsr & 0x7f; /* lfsr has once 7 bits */
+}
+
+uint8_t rev(uint8_t i)
+{
+    return (i << 7) | (i >> 7) |
+	((i << 5) & 0x40) | ((i >> 5) & 0x02) |
+	((i << 3) & 0x20) | ((i >> 3) & 0x04) |
+	((i << 1) & 0x10) | ((i >> 1) & 0x08);
 }
 
 void s_box_layer(uint8_t *state)
@@ -37,13 +75,23 @@ void s_box_layer(uint8_t *state)
 
 void p_layer(uint8_t *state)
 {
-    uint8_t temp[STATE_SIZE];
+    uint8_t temp[STATE_SIZE], i, j, offset, new_bit_index;
     memset(temp, 0, STATE_SIZE);
 
     for (i = 0; i < STATE_SIZE; i++)
-    {
-	for (j = 0; j < 8; j++)
-	{
-	    
+	for (j = 0; j < 8; j++) {
+	    // printf("permute bit: %08X\n", find_permute_bit(state, i, j));
+	    new_bit_index = find_permute_bit_position(i, j);
+	    temp[new_bit_index / 8] |= ((state[i] >> j) & 1) << (new_bit_index % 8);
+	}
+    
+    memcpy(state, temp, STATE_SIZE);
+}
 
-	
+uint8_t find_permute_bit_position(uint8_t byte_index, uint8_t bit_index)
+{
+    uint8_t new_bit_index;
+    new_bit_index = (byte_index << 3) + bit_index;
+    new_bit_index = (new_bit_index == 159) ? 159 : (40 * new_bit_index) % 159;
+    return new_bit_index;
+}
