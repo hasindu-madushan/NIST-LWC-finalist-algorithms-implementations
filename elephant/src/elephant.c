@@ -15,51 +15,61 @@
 
 typedef struct 
 {
-    uint8_t *key;
+    uint8_t key_padded[BLOCK_SIZE];
     uint8_t *nonce;
     uint8_t *associated_data;
     uint8_t *data; /* cipher text or plain text */
+    uint8_t *prev_mask, *current_mask, *next_mask;
+    uint8_t mask_buffers[3][BLOCK_SIZE];
 } Elephant_data;
 
-void mask_i_minus_1_1(uint8_t *buffer, uint8_t *current_mask, uint8_t *next_mask);
+void init(Elephant_data *data, uint8_t *key, uint8_t *nonce);
+void mask_i_minus_1_1(uint8_t *buffer, Elephant_data *data);
 void xor_block(uint8_t *buffer, uint8_t *input);
 void update_lfsr(uint8_t *output, uint8_t *input);
 
 uint8_t *encrypt(uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
 {
     uint8_t i, *cipher_text;
-    uint8_t mask_buffer_1[BLOCK_SIZE] = {0};
-    uint8_t mask_buffer_2[BLOCK_SIZE] = {0};
-    uint8_t mask_buffer_3[BLOCK_SIZE] = {0};
-    uint8_t *prev_mask, *current_mask, *next_mask;
-    uint8_t key_padded[BLOCK_SIZE] = {0};
-
+    Elephant_data data;
     uint8_t buffer[BLOCK_SIZE] = {0};
-    //memcpy(key_padded, key, KEY_SIZE);
 
-    memcpy(mask_buffer_2, key, KEY_SIZE);
-    permute(mask_buffer_2);
-    prev_mask = mask_buffer_1;
-    current_mask = mask_buffer_2;
-    next_mask = mask_buffer_3;
+    init(&data, key, nonce);
 
-    update_lfsr(next_mask, current_mask);
+
+
+    update_lfsr(data.next_mask, data.current_mask);
 
     memcpy(buffer, nonce, NONCE_SIZE);
 
-    mask_i_minus_1_1(buffer, current_mask, next_mask);
+    mask_i_minus_1_1(buffer, &data);
     permute(buffer);
-    mask_i_minus_1_1(buffer, current_mask, next_mask);
+    mask_i_minus_1_1(buffer, &data);
     xor_block(buffer, plain_text);
     
     printf("cipher text: %s\n", bytes_to_hex(buffer, 20));
     return cipher_text;
 }
 
-void mask_i_minus_1_1(uint8_t *buffer, uint8_t *current_mask, uint8_t *next_mask)
+void init(Elephant_data *data, uint8_t *key, uint8_t *nonce)
 {
-    xor_block(buffer, current_mask);
-    xor_block(buffer, next_mask);
+    memset(data->mask_buffers, 0, 3 * BLOCK_SIZE);
+    memcpy(data->key_padded, key, KEY_SIZE);
+    memset(data->key_padded + KEY_SIZE, 0, BLOCK_SIZE - KEY_SIZE);
+    permute(data->key_padded);
+
+    memcpy(data->mask_buffers[1], data->key_padded, BLOCK_SIZE);
+    data->prev_mask = data->mask_buffers[0];
+    data->current_mask = data->mask_buffers[1];
+    data->next_mask = data->mask_buffers[2];
+
+    data->nonce = nonce;
+}
+
+void mask_i_minus_1_1(uint8_t *buffer, Elephant_data *data)
+{
+    xor_block(buffer, data->current_mask);
+    xor_block(buffer, data->next_mask);
 }
 
 void xor_block(uint8_t *buffer, uint8_t *input)
