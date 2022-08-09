@@ -38,17 +38,17 @@ void permute(uint8_t *state)
 
     for (i = 0; i < N_ROUNDS; i++)
     {
-	printf("%d: %s\n", i, bytes_to_hex(state, 20));
+	//printf("%d: %s\n", i, bytes_to_hex(state, 20));
 	state[STATE_SIZE - 1] ^= rev(lfsr);
 	state[0] ^= lfsr;
-	printf("%d: before sbox %s\n", i, bytes_to_hex(state, 20));
+	//printf("%d: before sbox %s\n", i, bytes_to_hex(state, 20));
 	lfsr = i_counter(lfsr);
 	s_box_layer(state);
 	//printf("%d: after sbox    %s\n", i, bytes_to_hex(state, 20));
 	p_layer(state);
 	//printf("%d: after P layer %s\n", i, bytes_to_hex(state, 20));
 	//printf("lfsr: %02X\n", lfsr);
-	printf("%d: %s\n", i, bytes_to_hex(state, 20));
+	// printf("%d: %s\n", i, bytes_to_hex(state, 20));
     }
 }
 
