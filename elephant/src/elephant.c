@@ -33,6 +33,7 @@ typedef struct
 void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce);
 void decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce);
 
+void elephat_aead(uint8_t *output, uint8_t *tag, uint8_t *message, uint32_t message_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce, uint8_t encrypt);
 void init(Elephant_data *data, uint8_t *key, uint8_t *nonce, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *associated_data, uint32_t adlen);
 void process_message_block(uint8_t *cipher_text_block, Elephant_data *data, uint32_t i);
 void mask_i_minus_1_1(uint8_t *buffer, Elephant_data *data);
@@ -48,19 +49,25 @@ void xor_block(uint8_t *output, uint8_t *left, uint8_t *right);
 void xor_block_partial(uint8_t *output, uint8_t *left, uint8_t *right, uint8_t count);
 void update_lfsr(uint8_t *output, uint8_t *input);
 
+
+void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
+{
+    elephat_aead(cipher_text, tag, plain_text, plain_text_len, key, associated_data, adlen, nonce, 1);
+}
+
 void decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
 {
     uint8_t tag_decrypt[BLOCK_SIZE]; 
-    encrypt(plain_text, tag_decrypt, cipher_text, cipher_text_len, key, associated_data, adlen, nonce);
+    elephat_aead(plain_text, tag_decrypt, cipher_text, cipher_text_len, key, associated_data, adlen, nonce, 0);
     printf("tag decrypt: %s\n", bytes_to_hex(tag_decrypt, 8));
 }
 
-void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
+void elephat_aead(uint8_t *output, uint8_t *tag, uint8_t *message, uint32_t message_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce, uint8_t encrypt)
 {
     Elephant_data data;
     uint32_t i;
 
-    init(&data, key, nonce, plain_text, plain_text_len, associated_data, adlen);
+    init(&data, key, nonce, message, message_len, associated_data, adlen);
     get_a_block(tag, &data, 0);
     
     //printf("init tag: %s\n", bytes_to_hex(tag, 20));
@@ -70,9 +77,9 @@ void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t p
 	printf("i: %d\n", i);
 	update_lfsr(data.next_mask, data.current_mask);
 	if (i < data.n_m_blocks)
-	    process_message_block(cipher_text, &data, i);
+	    process_message_block(output, &data, i);
 	if (i > 0 && i <= data.n_c_blocks) /* start when i = 1 */
-	    update_tag_from_c_block(tag, &data, cipher_text, i - 1);
+	    update_tag_from_c_block(tag, &data, (encrypt ? output : message), i - 1);
 	if (i + 1  < data.n_ad_blocks) /* 1 ahead */
 	    update_tag_from_a_block(tag, &data, i + 1);
 	update_masks(&data);
@@ -250,8 +257,8 @@ int main()
     printf("tag: %s\n", bytes_to_hex(tag, 8));
 
     uint8_t *plaint_text = (uint8_t*)malloc(message_len);
-    //decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
-    //printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
+    decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
+    printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
 
     free(cipher_text);
     free(plaint_text);
