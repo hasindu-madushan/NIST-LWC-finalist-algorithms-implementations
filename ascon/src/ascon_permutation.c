@@ -10,7 +10,7 @@ void diffusion_layer(uint64_t *state, uint64_t *t);
 
 
 const uint8_t round_constants[12] = {
-    0xf0, 0xe1, 0xd2, 0xc3, 0xb4,0xa5,
+    0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5,
     0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b
 };
 
@@ -48,7 +48,7 @@ void s_box_layer(uint64_t *state, uint64_t *t)
     t[3] = state[3] ^ (~state[4] & state[0]);
     t[4] = state[4] ^ (~state[0] & state[1]);
 
-    t[1] ^= t[1];
+    t[1] ^= t[0];
     t[0] ^= t[4];
     t[3] ^= t[2];
     t[2] = ~t[2];

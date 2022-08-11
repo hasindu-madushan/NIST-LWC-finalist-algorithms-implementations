@@ -30,6 +30,7 @@ void init_data(Ascon_data *data, uint8_t *message, uint32_t message_len, uint8_t
 void initialize_state(Ascon_data *data);
 void process_associated_data(Ascon_data *data);
 void process_plain_text(uint8_t *cipher_text, Ascon_data *data);
+void load_bytes_reversed(uint8_t* output, uint8_t output_offset, uint8_t* input, uint8_t count);
 
 
 void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
@@ -55,13 +56,16 @@ void init_data(Ascon_data *data, uint8_t *message, uint32_t message_len, uint8_t
 void initialize_state(Ascon_data *data)
 {
     data->state[0] = 0x80400c0600000000;
-    data->state[1] = ((uint64_t*)data->key)[0];
-    data->state[2] = ((uint64_t*)data->key)[1];
-    data->state[3] = ((uint64_t*)data->nonce)[0];
-    data->state[4] = ((uint64_t*)data->nonce)[1];
+
+    load_bytes_reversed((uint8_t*)&data->state[1], 0, data->key, 8);
+    load_bytes_reversed((uint8_t*)&data->state[2], 0, data->key + 8, 8);
+    load_bytes_reversed((uint8_t*)&data->state[3], 0, data->nonce, 8);
+    load_bytes_reversed((uint8_t*)&data->state[4], 0, data->nonce + 8, 8);
 
     printf("state before init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
     permute_a(data->state);
+    printf("state after init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
+
     data->state[3] ^= ((uint64_t*)data->key)[0];
     data->state[4] ^= ((uint64_t*)data->key)[1];
 }
@@ -118,6 +122,14 @@ void get_block_padded(uint8_t *output, uint8_t *data, uint32_t data_len, uint32_
     }
 }
     
+void load_bytes_reversed(uint8_t* output, uint8_t output_offset, uint8_t* input, uint8_t count)
+{
+    uint8_t i;
+    output_offset = BLOCK_SIZE - output_offset - 1;
+    for (i = 0; i < count; i++)
+	output[output_offset - i] = input[i];
+}
+
 int main()
 {
     /* count = 101 */
