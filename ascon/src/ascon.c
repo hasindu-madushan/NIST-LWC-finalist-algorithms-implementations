@@ -33,6 +33,7 @@ void process_plain_text(uint8_t *cipher_text, Ascon_data *data);
 void load_bytes_output_reversed(uint8_t* output, uint8_t output_offset, uint8_t* input, uint8_t count);
 void finalize(uint8_t *tag, Ascon_data *data);
 void load_bytes_input_reversed(uint8_t *output, uint8_t *input, uint8_t count);
+void process_cipher_text(uint8_t *plain_text, Ascon_data *data);
 
 
 void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
@@ -68,9 +69,9 @@ void initialize_state(Ascon_data *data)
     data->state[3] = data->nonce[0];
     data->state[4] = data->nonce[1];
 
-    printf("state before init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
+    //printf("state before init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
     permute_a(data->state);
-    printf("state after init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
+    //printf("state after init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
 
     data->state[3] ^= data->key[0];
     data->state[4] ^= data->key[1];
@@ -86,7 +87,7 @@ void process_associated_data(Ascon_data *data)
 	for (i = 0; i < n_ad_blocks; i++) 
 	{
 	    get_block_padded((uint8_t*)&temp, data->associated_data, data->adlen, i);		
-	    printf("ad block %d: %s\n", i, bytes_to_hex((uint8_t*)&temp, 8));
+	    //printf("ad block %d: %s\n", i, bytes_to_hex((uint8_t*)&temp, 8));
 	    data->state[0] ^= temp;
 	    permute_b(data->state);
 	}
@@ -102,17 +103,19 @@ void process_plain_text(uint8_t *cipher_text, Ascon_data *data)
     for (i = 0; i < n_message_blocks - 1; i++)
     {
 	get_block_padded((uint8_t*)&temp, data->message, data->message_len, i);
+	//printf("pi: %s\n", bytes_to_hex((uint8_t*)&temp, 8));
 	data->state[0] ^= temp;
-	cipher_text[i] = data->state[0];
 	load_bytes_input_reversed((uint8_t*)((uint64_t*)cipher_text + i), (uint8_t*)data->state, BLOCK_SIZE);
 	permute_b(data->state);
     }
     get_block_padded((uint8_t*)&temp, data->message, data->message_len, n_message_blocks - 1);
+    //printf("pi: %s\n", bytes_to_hex((uint8_t*)&temp, 8));
     data->state[0] ^= temp;
-    printf("s[0]: %s\n", bytes_to_hex((uint8_t*)data->state, 8));
+    //printf("s[0]: %s\n", bytes_to_hex((uint8_t*)data->state, 8));
     load_bytes_input_reversed((uint8_t*)((uint64_t*)cipher_text + n_message_blocks - 1), (uint8_t*)data->state, data->message_len % BLOCK_SIZE);
 } 
     
+	
 /**
  * Returns a index th block of data. Pladded with 1 || 0 *. For plain text, ad or 
  * cipher text.
@@ -124,7 +127,6 @@ void get_block_padded(uint8_t *output, uint8_t *data, uint32_t data_len, uint32_
     count = ((data_len - offset) < BLOCK_SIZE) ? (data_len - offset) : BLOCK_SIZE;
     //memcpy(output, data + offset, count);
     load_bytes_output_reversed(output, 0, data + offset, count);
-    printf("count: %d\n", count);
     if (count < BLOCK_SIZE)
     {
 	output[BLOCK_SIZE - count - 1] = 0x80;
@@ -158,8 +160,50 @@ void load_bytes_input_reversed(uint8_t *output, uint8_t *input, uint8_t count)
 	output[i] = input[BLOCK_SIZE - i - 1];
 }
 
+uint8_t decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
+{
+    Ascon_data data;
+    uint8_t tag_match, tag_new[TAG_SIZE], i;
+    init_data(&data, cipher_text, cipher_text_len, associated_data, adlen, key, nonce);
+    initialize_state(&data);
+    //printf("state after init: %s\n", bytes_to_hex((uint8_t*)data.state, STATE_SIZE));
+    process_associated_data(&data);
+    //printf("state after process ad: %s\n", bytes_to_hex((uint8_t*)data.state, STATE_SIZE));
+    process_cipher_text(plain_text, &data);
+    finalize(tag_new, &data);
+    tag_match = 0;
+    for (i = 0; i < TAG_SIZE; i++)
+	tag_match |= tag[i] ^ tag_new[i];
+    return !tag_match;
+}
+
+void process_cipher_text(uint8_t *plain_text, Ascon_data *data)
+{
+    uint64_t ci, temp;
+    uint32_t n_message_blocks, i;
+    uint8_t last_block_size, *last_block;
+    n_message_blocks = data->message_len / BLOCK_SIZE + (data->message_len % BLOCK_SIZE > 0);
+    printf("n_message_blocks: %d\n", n_message_blocks);
+    for (i = 0; i < n_message_blocks - 1; i++)
+    {
+	load_bytes_output_reversed((uint8_t*)&ci, 0, (uint8_t*)((uint64_t*)data->message + i), BLOCK_SIZE);
+	temp = ci ^ data->state[0];
+	load_bytes_input_reversed((uint8_t*)((uint64_t*)plain_text + i), (uint8_t*)&temp, BLOCK_SIZE);
+	data->state[0] = ci;
+	permute_b(data->state);
+    }
+    last_block_size = data->message_len % BLOCK_SIZE;
+    load_bytes_output_reversed((uint8_t*)&ci, 0, (uint8_t*)((uint64_t*)data->message + n_message_blocks - 1), last_block_size);
+    temp = ci ^ data->state[0];
+    last_block = (uint8_t*)((uint64_t*)plain_text + n_message_blocks - 1);
+    load_bytes_input_reversed(last_block, (uint8_t*)&temp, last_block_size);
+    get_block_padded((uint8_t*)&temp, last_block, last_block_size, 0);
+    data->state[0] ^= temp;
+}
+
+
 int main() {
-    /* count = 624 */
+    /* count = 195 */
     char message_hex[] = "000102030405060708090A0B0C0D0E0F1011";
     char ad_hex[] = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C";
 
@@ -182,9 +226,9 @@ int main() {
     printf("tag: %s\n", bytes_to_hex(tag, 16));
 
     uint8_t *plaint_text = (uint8_t*)malloc(message_len);
-    //uint8_t verify = decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
-    //printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
-    //printf("tag verify: %d\n", verify);
+    uint8_t verify = decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
+    printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
+    printf("tag verify: %d\n", verify);
 
     free(cipher_text);
     free(plaint_text);
