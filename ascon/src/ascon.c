@@ -16,8 +16,8 @@
 
 typedef struct
 {
-    uint8_t *key;
-    uint8_t *nonce;
+    uint64_t key[2];
+    uint64_t nonce[2];
     uint8_t *message;
     uint32_t message_len;
     uint8_t *associated_data;
@@ -51,30 +51,27 @@ void init_data(Ascon_data *data, uint8_t *message, uint32_t message_len, uint8_t
     data->message_len = message_len;
     data->associated_data = associated_data;
     data->adlen = adlen;
-    data->key = key;
-    data->nonce = nonce;
+    load_bytes_output_reversed((uint8_t*)data->key, 0, key, 8);
+    load_bytes_output_reversed((uint8_t*)&data->key[1], 0, key + 8, 8);
+    load_bytes_output_reversed((uint8_t*)data->nonce, 0, nonce, 8);
+    load_bytes_output_reversed((uint8_t*)&data->nonce[1], 0, nonce + 8, 8);
 }
 
 void initialize_state(Ascon_data *data)
 {
-    uint64_t key_reversed[2], nonce_reversed[2];
     data->state[0] = 0x80400c0600000000;
-    load_bytes_output_reversed((uint8_t*)key_reversed, 0, data->key, 8);
-    load_bytes_output_reversed((uint8_t*)(key_reversed + 1), 0, data->key + 8, 8);
-    load_bytes_output_reversed((uint8_t*)nonce_reversed, 0, data->nonce, 8);
-    load_bytes_output_reversed((uint8_t*)(nonce_reversed + 1), 0, data->nonce + 8, 8);
 
-    data->state[1] = key_reversed[0];
-    data->state[2] = key_reversed[1];
-    data->state[3] = nonce_reversed[0];
-    data->state[4] = nonce_reversed[1];
+    data->state[1] = data->key[0];
+    data->state[2] = data->key[1];
+    data->state[3] = data->nonce[0];
+    data->state[4] = data->nonce[1];
 
     printf("state before init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
     permute_a(data->state);
     printf("state after init perm: %s\n", bytes_to_hex((uint8_t*)data->state, STATE_SIZE));
 
-    data->state[3] ^= key_reversed[0];
-    data->state[4] ^= key_reversed[1];
+    data->state[3] ^= data->key[0];
+    data->state[4] ^= data->key[1];
 }
 
 void process_associated_data(Ascon_data *data)
