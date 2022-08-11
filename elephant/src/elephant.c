@@ -31,7 +31,7 @@ typedef struct
 } Elephant_data;
 
 void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce);
-void decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce);
+uint8_t decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce);
 
 void elephat_aead(uint8_t *output, uint8_t *tag, uint8_t *message, uint32_t message_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce, uint8_t encrypt);
 void init(Elephant_data *data, uint8_t *key, uint8_t *nonce, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *associated_data, uint32_t adlen);
@@ -55,11 +55,14 @@ void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t p
     elephat_aead(cipher_text, tag, plain_text, plain_text_len, key, associated_data, adlen, nonce, 1);
 }
 
-void decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
+uint8_t decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
 {
-    uint8_t tag_decrypt[BLOCK_SIZE]; 
+    uint8_t tag_decrypt[BLOCK_SIZE], tag_match, i; 
     elephat_aead(plain_text, tag_decrypt, cipher_text, cipher_text_len, key, associated_data, adlen, nonce, 0);
-    printf("tag decrypt: %s\n", bytes_to_hex(tag_decrypt, 8));
+    tag_match = 0;
+    for (i = 0; i < TAG_SIZE; i++)
+	tag_match |= tag[i] ^ tag_decrypt[i];
+    return !tag_match;
 }
 
 void elephat_aead(uint8_t *output, uint8_t *tag, uint8_t *message, uint32_t message_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce, uint8_t encrypt)
@@ -111,6 +114,14 @@ void init(Elephant_data *data, uint8_t *key, uint8_t *nonce, uint8_t *plain_text
     data->n_m_blocks = plain_text_len / BLOCK_SIZE + ((plain_text_len % BLOCK_SIZE) ? 1 : 0);
     data->n_ad_blocks = (NONCE_SIZE + adlen) / BLOCK_SIZE + 1;
     data->n_c_blocks = plain_text_len / BLOCK_SIZE + 1;
+}
+
+void update_lfsr(uint8_t *output, uint8_t *input)
+{
+    uint8_t i;
+    for (i = 0; i < BLOCK_SIZE - 1; i++)
+	output[i] = input[i + 1];
+    output[BLOCK_SIZE - 1] = ROTATE_LEFT_8(input[0], 3) ^ (input[3] << 7) ^ (input[13] >> 7);
 }
 
 void process_message_block(uint8_t *cipher_text_block, Elephant_data *data, uint32_t i)
@@ -223,20 +234,12 @@ void xor_block_partial(uint8_t *output, uint8_t *left, uint8_t *right, uint8_t c
     for (i = 0; i < count; i++)
 	output[i] = left[i] ^ right[i];
 }
-    
-void update_lfsr(uint8_t *output, uint8_t *input)
-{
-    uint8_t i;
-    for (i = 0; i < BLOCK_SIZE - 1; i++)
-	output[i] = input[i + 1];
-    output[BLOCK_SIZE - 1] = ROTATE_LEFT_8(input[0], 3) ^ (input[3] << 7) ^ (input[13] >> 7);
-}
 
 int main() 
 {
-    /* count = 101 */
-    char message_hex[] = "000102";
-    char ad_hex[] = "00";
+    /* count = 613 */
+    char message_hex[] = "000102030405060708090A0B0C0D0E0F1011";
+    char ad_hex[] = "000102030405060708090A0B0C0D0E0F1011";
 
     char key_hex[] = "000102030405060708090A0B0C0D0E0F";
     char nonce_hex[] = "000102030405060708090A0B";
@@ -257,8 +260,9 @@ int main()
     printf("tag: %s\n", bytes_to_hex(tag, 8));
 
     uint8_t *plaint_text = (uint8_t*)malloc(message_len);
-    decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
+    uint8_t verify = decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
     printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
+    printf("tag verify: %d\n", verify);
 
     free(cipher_text);
     free(plaint_text);
