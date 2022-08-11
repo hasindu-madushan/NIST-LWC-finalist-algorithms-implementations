@@ -31,6 +31,7 @@ void initialize_state(Ascon_data *data);
 void process_associated_data(Ascon_data *data);
 void process_plain_text(uint8_t *cipher_text, Ascon_data *data);
 void load_bytes_output_reversed(uint8_t* output, uint8_t output_offset, uint8_t* input, uint8_t count);
+void finalize(uint8_t *tag, Ascon_data *data);
 void load_bytes_input_reversed(uint8_t *output, uint8_t *input, uint8_t count);
 
 
@@ -43,6 +44,7 @@ void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t p
     process_associated_data(&data);
     printf("state after process ad: %s\n", bytes_to_hex((uint8_t*)data.state, STATE_SIZE));
     process_plain_text(cipher_text, &data);
+    finalize(tag, &data);
 }
 
 void init_data(Ascon_data *data, uint8_t *message, uint32_t message_len, uint8_t *associated_data, uint32_t adlen, uint8_t *key, uint8_t *nonce)
@@ -138,6 +140,17 @@ void load_bytes_output_reversed(uint8_t* output, uint8_t output_offset, uint8_t*
 	output[output_offset - i] = input[i];
 }
 
+void finalize(uint8_t *tag, Ascon_data *data)
+{
+    data->state[1] ^= data->key[0];
+    data->state[2] ^= data->key[1];
+    permute_a(data->state);
+    data->state[3] ^= data->key[0];
+    data->state[4] ^= data->key[1];
+    load_bytes_input_reversed(tag, (uint8_t*)(data->state + 3), 8);
+    load_bytes_input_reversed(tag + 8, (uint8_t*)(data->state + 4), 8);
+}
+
 void load_bytes_input_reversed(uint8_t *output, uint8_t *input, uint8_t count)
 {
     uint8_t i;
@@ -166,7 +179,7 @@ int main() {
     encrypt(cipher_text, tag, message, message_len, key, ad, adlen, nonce); 
 
     printf("cipher_text: %s\n", bytes_to_hex(cipher_text, message_len));
-    //printf("tag: %s\n", bytes_to_hex(tag, 8));
+    printf("tag: %s\n", bytes_to_hex(tag, 16));
 
     uint8_t *plaint_text = (uint8_t*)malloc(message_len);
     //uint8_t verify = decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
