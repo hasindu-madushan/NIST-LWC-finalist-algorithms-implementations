@@ -203,7 +203,7 @@ void process_cipher_text(uint8_t *plain_text, Ascon_data *data)
 
 
 int main() {
-    /* count = 195 */
+    /* count = 624 */
     char message_hex[] = "000102030405060708090A0B0C0D0E0F1011";
     char ad_hex[] = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C";
 
