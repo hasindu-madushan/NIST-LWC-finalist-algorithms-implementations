@@ -46,6 +46,7 @@ void permute(uint64_t *state);
 void load_state_reversed(uint64_t *output, uint64_t *state);
 void load_reversed_64(uint8_t *output, uint8_t *input);
 void xor_block(uint8_t *output, uint8_t *left, uint8_t *right, uint8_t count);
+uint8_t verify_tag(uint8_t *tag, uint8_t *tag_new);
 
 
 void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
@@ -54,6 +55,19 @@ void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t p
     init_data(&data, plain_text, plain_text_len, associated_data, adlen, key, nonce);
     isap_enc(cipher_text, &data);
     isap_mac(tag, &data, cipher_text);
+}
+
+uint8_t decrypt(uint8_t *plain_text, uint8_t *tag, uint8_t *cipher_text, uint32_t cipher_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
+{
+    Isap_data data;
+    uint8_t tag_new[KEY_SIZE];
+    init_data(&data, cipher_text, cipher_text_len, associated_data, adlen, key, nonce);
+    isap_mac(tag_new, &data, cipher_text);
+    printf("decrypted tag: %s\n", bytes_to_hex(tag_new, KEY_SIZE));
+    if (!verify_tag(tag, tag_new))
+	return 0;
+    isap_enc(plain_text, &data);
+    return 1;
 }
 
 void init_data(Isap_data *data, uint8_t *message, uint32_t message_len, uint8_t *associated_data, uint32_t adlen, uint8_t *key, uint8_t *nonce)
@@ -245,10 +259,19 @@ void xor_block(uint8_t *output, uint8_t *left, uint8_t *right, uint8_t count)
 	output[i] = left[i] ^ right[i];
 }
 
+uint8_t verify_tag(uint8_t *tag, uint8_t *tag_new)
+{
+    uint8_t tag_match, i;
+    tag_match = 0;
+    for (i = 0; i < KEY_SIZE; i++)
+	tag_match |= tag[i] ^ tag_new[i];
+    return !tag_match;
+}
+
 int main() {
-    /* count = 101 */
+    /* count = 625 */
     char message_hex[] = "000102030405060708090A0B0C0D0E0F1011";
-    char ad_hex[] = "00";
+    char ad_hex[] = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D";
 
     char key_hex[] = "000102030405060708090A0B0C0D0E0F";
     char nonce_hex[] = "000102030405060708090A0B0C0D0E0F";
@@ -269,9 +292,9 @@ int main() {
     printf("tag: %s\n", bytes_to_hex(tag, 16));
 
     uint8_t *plaint_text = (uint8_t*)malloc(message_len);
-    //uint8_t verify = decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
-    //printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
-    //printf("tag verify: %d\n", verify);
+    uint8_t verify = decrypt(plaint_text, tag, cipher_text, message_len, key, ad, adlen, nonce);
+    printf("decryptted plain text: %s\n", bytes_to_hex(plaint_text, message_len));
+    printf("tag verify: %d\n", verify);
 
     free(cipher_text);
     free(plaint_text);
