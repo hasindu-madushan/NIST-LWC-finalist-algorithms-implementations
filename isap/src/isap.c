@@ -29,18 +29,20 @@ typedef struct
 
 const uint8_t IV_KE[] = {0x03, 128, 64, 1, 12, 12, 12, 12};
 
-void isap_enc(Isap_data *data);
+void isap_enc(uint8_t *cipher_text, Isap_data *data);
 void isap_rk_enc(uint8_t *output, uint8_t *key, uint8_t *input);
 void init_data(Isap_data *data, uint8_t *message, uint32_t message_len, uint8_t *associated_data, uint32_t adlen, uint8_t *key, uint8_t *nonce);
 void permute(uint64_t *state);
 void load_state_reversed(uint64_t *output, uint64_t *state);
 void load_reversed_64(uint8_t *output, uint8_t *input);
+void xor_block(uint8_t *output, uint8_t *left, uint8_t *right, uint8_t count);
+
 
 void encrypt(uint8_t *cipher_text, uint8_t *tag, uint8_t *plain_text, uint32_t plain_text_len, uint8_t *key, uint8_t *associated_data, uint32_t adlen, uint8_t *nonce)
 {
     Isap_data data;
     init_data(&data, plain_text, plain_text_len, associated_data, adlen, key, nonce);
-    isap_enc(&data);
+    isap_enc(cipher_text, &data);
 }
 
 void init_data(Isap_data *data, uint8_t *message, uint32_t message_len, uint8_t *associated_data, uint32_t adlen, uint8_t *key, uint8_t *nonce)
@@ -53,12 +55,27 @@ void init_data(Isap_data *data, uint8_t *message, uint32_t message_len, uint8_t 
     data->nonce = nonce;
 }
 
-void isap_enc(Isap_data *data)
+void isap_enc(uint8_t *cipher_text, Isap_data *data)
 {
     uint64_t state[5];
+    uint32_t i, n_message_blocks;
+    uint8_t offset;
     isap_rk_enc((uint8_t*)state, data->key, data->nonce);
     memcpy((uint8_t*)state + STATE_SIZE - NONCE_SIZE, data->nonce, NONCE_SIZE);
     printf("state after rk: %s\n", bytes_to_hex((uint8_t*)state, 40));
+
+    n_message_blocks = data->message_len / BLOCK_SIZE + (data->message_len % BLOCK_SIZE ? 1 : 0);
+
+    for (i = 0; i < n_message_blocks - 1; i++)
+    {
+	permute(state);
+	*(uint64_t*)(cipher_text + i) = *(uint64_t*)data->message ^ state[0];
+    }
+    
+    offset = (n_message_blocks - 1) * BLOCK_SIZE;
+    permute(state);
+    xor_block(cipher_text + offset, data->message + offset, (uint8_t*)state, data->message_len % BLOCK_SIZE); /* Optimize % */
+
 }
 
 void isap_rk_enc(uint8_t *output, uint8_t *key, uint8_t *input)
@@ -93,6 +110,10 @@ void isap_rk_enc(uint8_t *output, uint8_t *key, uint8_t *input)
     memcpy(output, state, STATE_SIZE - NONCE_SIZE);
 }
 
+void isap_mac(uint8_t *tag, Isap_data *data)
+{
+}
+
 void permute(uint64_t *state)
 {
     uint64_t state_reversed[5];
@@ -122,6 +143,13 @@ void load_reversed_64(uint8_t *output, uint8_t *input)
     output[7] = input[0];
 }
 
+void xor_block(uint8_t *output, uint8_t *left, uint8_t *right, uint8_t count)
+{
+    uint8_t i;
+    for (i = 0; i < count; i++)
+	output[i] = left[i] ^ right[i];
+}
+
 int main() {
     /* count = 195 */
     char message_hex[] = "000102";
@@ -142,7 +170,7 @@ int main() {
 
     encrypt(cipher_text, tag, message, message_len, key, ad, adlen, nonce); 
 
-    //printf("cipher_text: %s\n", bytes_to_hex(cipher_text, message_len));
+    printf("cipher_text: %s\n", bytes_to_hex(cipher_text, message_len));
     //printf("tag: %s\n", bytes_to_hex(tag, 16));
 
     uint8_t *plaint_text = (uint8_t*)malloc(message_len);
