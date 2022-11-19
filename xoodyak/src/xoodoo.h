@@ -7,4 +7,5 @@
 
 #define LANESIZE 4
 #define LANES_PER_PLANE 3
+#define PLANE_SIZE LANES_PER_PLANE * 4
 #define NPLANES 3
