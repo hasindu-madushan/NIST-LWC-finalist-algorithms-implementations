@@ -25,6 +25,11 @@ uint32_t round_constants[] = {
 
 void xoodoo_initialize(uint8_t *state);
 void mix_layer(uint8_t *state);
+void shift_planes_west(uint8_t *state);
+void add_round_constants(uint8_t *state, int8_t round);
+void non_linear_layer(uint8_t *state);
+void shift_planes_east(uint8_t *state);
+
 void add_planes(uint8_t *output, uint8_t *plane1, uint8_t *plane2);
 void rotate_plane(uint8_t *output, uint8_t *plane, uint8_t x, uint8_t y);
 void shift_planes(uint8_t *state, uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2);
@@ -36,8 +41,15 @@ void and_planes(uint8_t *output, uint8_t *plane1, uint8_t *plane2);
 
 void xoodoo(uint8_t *state)
 {
-    xoodoo_initialize(state);
-    mix_layer(state);
+    for (int round = 1 - MAXROUNDS; round >= 0; round++)
+    {
+	xoodoo_initialize(state);
+    	mix_layer(state);
+    	shift_planes_west(state);
+    	add_round_constants(state, round);
+    	non_linear_layer(state);
+    	shift_planes_east(state);
+    }
 }
 
 void xoodoo_initialize(uint8_t *state)
