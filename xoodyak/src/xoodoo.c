@@ -170,6 +170,7 @@ uint32_t find_shifted_lane(uint8_t *plane, uint8_t index, uint8_t offset)
     return *((uint32_t*)plane + temp);
 }
 
+#ifdef XOODOO_TEST
 int main()
 {
     uint8_t state[NLANES * 4];
@@ -180,3 +181,4 @@ int main()
     printf("done!\n");
     return 0;
 }
+#endif
