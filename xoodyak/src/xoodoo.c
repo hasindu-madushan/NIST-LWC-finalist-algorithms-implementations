@@ -51,15 +51,15 @@ void xoodoo(uint8_t *state)
     for (int round = 1 - MAXROUNDS; round <= 0; round++)
     {
     	mix_layer(state);
-	printf("#%d state (mix col):      %s\n", round, bytes_to_hex(state, NLANES * 4));
+	//printf("#%d state (mix col):      %s\n", round, bytes_to_hex(state, NLANES * 4));
     	shift_planes_west(state);
-	printf("#%d state (shift planes): %s\n", round, bytes_to_hex(state, NLANES * 4));
+	//printf("#%d state (shift planes): %s\n", round, bytes_to_hex(state, NLANES * 4));
     	add_round_constants(state, round);
-	printf("#%d state (round const):  %s\n", round, bytes_to_hex(state, NLANES * 4));
+	//printf("#%d state (round const):  %s\n", round, bytes_to_hex(state, NLANES * 4));
     	non_linear_layer(state);
-	printf("#%d state (non lin):      %s\n", round, bytes_to_hex(state, NLANES * 4));
+	//printf("#%d state (non lin):      %s\n", round, bytes_to_hex(state, NLANES * 4));
     	shift_planes_east(state);
-	printf("#%d state (shift east):   %s\n\n", round, bytes_to_hex(state, NLANES * 4));
+	//printf("#%d state (shift east):   %s\n\n", round, bytes_to_hex(state, NLANES * 4));
 	//printf("#%d state: %s\n", round, bytes_to_hex(state, NLANES * 4));
     }
 }
