@@ -99,7 +99,7 @@ void isap_enc(uint8_t *cipher_text, Isap_data *data)
     
     offset = (n_message_blocks - 1) * BLOCK_SIZE;
     permute(state);
-    xor_block(cipher_text + offset, data->message + offset, (uint8_t*)state, data->message_len % BLOCK_SIZE); /* TODO: Optimize % */
+    xor_block(cipher_text + offset, data->message + offset, (uint8_t*)state, data->message_len - offset); /* TODO: Optimize % */
 
 }
 
@@ -269,9 +269,9 @@ uint8_t verify_tag(uint8_t *tag, uint8_t *tag_new)
 }
 
 int main() {
-    /* count = 625 */
-    char message_hex[] = "000102030405060708090A0B0C0D0E0F1011";
-    char ad_hex[] = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D";
+    /* count = 294 */
+    char message_hex[] = "0001020304050607";
+    char ad_hex[] = "";
 
     char key_hex[] = "000102030405060708090A0B0C0D0E0F";
     char nonce_hex[] = "000102030405060708090A0B0C0D0E0F";
